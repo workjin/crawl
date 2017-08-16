@@ -1,11 +1,11 @@
 <?php
     header("Content-Type: text/html; charset=gbk");
 
-    function login($url,$data){
+    function basic_post($url,$data){
         $login = curl_init();
         curl_setopt($login, CURLOPT_COOKIEJAR, "cookie.txt");
         curl_setopt($login, CURLOPT_COOKIEFILE, "cookie.txt");
-        curl_setopt($login, CURLOPT_TIMEOUT, 40000);
+        curl_setopt($login, CURLOPT_TIMEOUT, 4000);
         curl_setopt($login, CURLOPT_RETURNTRANSFER, TRUE);
         curl_setopt($login, CURLOPT_URL, $url);
         curl_setopt($login, CURLOPT_USERAGENT, $_SERVER['HTTP_USER_AGENT']);
@@ -17,7 +17,7 @@
         ob_end_clean();
         curl_close ($login);
         unset($login);    
-    }            
+    }
 
          // 登录成功后获取数据
      function get_content($url) {
@@ -30,7 +30,7 @@
          $rs = curl_exec($ch); //执行cURL抓取页面内容
          curl_close($ch);
          return $rs;
-     }   
+     }
      
     function post_data($site,$data){
         $datapost = curl_init();
@@ -80,40 +80,92 @@
     function encode_cn($string){
         return iconv("UTF-8","GB2312", $string);
     }
+
+    function getVerifyToken($html){
+        $target= "verifyhash = '";
+        $tmp = strstr($html, $target);
+        $tmp = substr($tmp, strlen($target));
+        $tmp = strstr($tmp, "'", true);
+        return $tmp;
+    }
+
+    function login($user, $pwpwd, $url){
+        $encode = urlencode(iconv('utf-8', 'gb2312', $user));
+        $request = "jumpurl=index.php&lgt=0&step=2&pwuser=$encode&pwpwd=$pwpwd&submit.x=15&submit.y=12";
+        return basic_post($url, $request);
+    }
+
+    function register($user, $pwpwd, $email, $url){
+        $encode = urlencode(iconv('utf-8', 'gb2312', $user));
+        $request = "forward=&step=2&regname=$encode&regpwd=$pwpwd&regpwdrepeat=$pwpwd&regemail=$email&rgpermit=1";
+        return basic_post($url, $request);
+    }
+
+    function getToken($length){
+       $token = "";
+       $codeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+       $codeAlphabet.= "abcdefghijklmnopqrstuvwxyz";
+       $codeAlphabet.= "0123456789";
+       $max = strlen($codeAlphabet); // edited
+
+      for ($i=0; $i < $length; $i++) {
+          $token .= $codeAlphabet[random_int(0, $max-1)];
+      }
+
+      return $token;
+    }
+
 ?>
 
 <?php
-    //设置用户信息
-    $usr = '小天使';
-    $pwpwd = 'cai888';
-    $encode = urlencode(iconv('utf-8', 'gb2312', $usr));
+        $url_register = "http://118cs.com/register.php";
+        $url_post = "http://118cs.com/post.php?fid=2";
+        $url_login = "http://118cs.com/login.php";
+        $pwpwd = 'cai888';
+        // $usr_arr = array('醉醉', '屁屁', '虫虫');
+        $usr_arr = array('醉醉', '啊啊啊哦哦哦', '屁屁');
+        
+        foreach($usr_arr as $usr)
+        {
 
-    //登陆
-    $url = "jumpurl=index.php&lgt=0&step=2&pwuser=$encode&pwpwd=$pwpwd&submit.x=15&submit.y=12";
-    $login = login("http://118cs.com/login.php", $url);
+            //登陆
+            $login = login($usr, $pwpwd, $url_login);
 
-    // echo get_content($url2);
-
-    //设置发文内容
-    $url2 = "http://118cs.com/post.php?fid=2";
-    $title= encode_cn('@@预测');
-    $body = encode_cn('准准准 喜洋洋！');
-    //用户固定令牌
-    $verify = '3e1633d1';
-    
-
-    $data = build_data($title, $body, $verify);
-
-    json_encode($data);
+            //如果用户不存在
+            $no_user = encode_cn('用户'.$usr. " 不存在");
+            if(strpos($login, $no_user) == true)
+            {
+                //注册
+                $reg_email = getToken(9).'@'.getToken(4).'.com';
+                register($usr, $pwpwd, $reg_email, $url_register);
+                $login = login($usr, $pwpwd, $url_login);
 
 
-    //发表文章
-    post_data($url2, $data);
+                $file = 'OUTPUTFILE_register.txt';
+                file_put_contents($file, $no_user."\r\n".$reg_email);
+            }
 
-    $write = $title;
-    $write .= "\r\n". mb_internal_encoding();
+            //获取用户令牌
+            $verify = getVerifyToken($login);
 
-    $file = 'OUTPUTFILE_arr.txt';
-    file_put_contents($file, $write);
+            // 设置发文内容
+            $title= encode_cn(getToken(5));
+            $body = encode_cn(getToken(40));
 
+            //构造包
+            $data = build_data($title, $body, $verify);
+            json_encode($data);
+
+           //发表文章
+            post_data($url_post, $data);
+
+            // 登出
+            $logout = basic_post("http://118cs.com/login.php", "action=quit");
+        }
+
+    //测试输出
+    // $write = $title;
+    // $write .= "\r\n". mb_internal_encoding();
+    // $file = 'OUTPUTFILE_arr.txt';
+    // file_put_contents($file, $write);
 ?>
